@@ -44,6 +44,46 @@ function docField(doc) {
   return doc ? { value: docToMarkdown(doc) } : undefined;
 }
 
+/* -- Colour swatches ----------------------------------------------------------
+   Palette values from picovector api/color.py, resolved for Tufty (the sim's
+   model): black and white take the Tufty tuples - a dark blue-black and an
+   off-white, not pure 000/fff. Used to draw a swatch next to color.<name> and
+   to seed the picker on color.rgb()/color.hsv() calls. */
+const PALETTE_RGB = {
+  black:  [0x14, 0x1e, 0x28, 255], grape: [0x44, 0x24, 0x34, 255], navy:  [0x30, 0x34, 0x6d, 255],
+  grey:   [0x4e, 0x4a, 0x4e, 255], brown: [0x85, 0x4c, 0x30, 255], green: [0x34, 0x65, 0x24, 255],
+  red:    [0xd0, 0x46, 0x48, 255], taupe: [0x75, 0x71, 0x61, 255], blue:  [0x59, 0x7d, 0xce, 255],
+  orange: [0xd2, 0x7d, 0x2c, 255], smoke: [0x85, 0x95, 0xa1, 255], lime:  [0x6d, 0xaa, 0x2c, 255],
+  latte:  [0xd2, 0xaa, 0x99, 255], cyan:  [0x6d, 0xc2, 0xca, 255], yellow:[0xda, 0xd4, 0x5e, 255],
+  white:  [0xde, 0xee, 0xd6, 255], transparent: [0x00, 0x00, 0x00, 0],
+  light_grey: [0xc0, 0xc0, 0xc0, 255], dark_grey: [0x40, 0x40, 0x40, 255],
+};
+
+// Badge HSV: h, s, v each 0-255, hue is 256 counts to a full turn.
+function hsvToRgb(h, s, v) {
+  const H = (h / 256) * 6, S = s / 255, V = v / 255;
+  const i = ((Math.floor(H) % 6) + 6) % 6, f = H - Math.floor(H);
+  const p = V * (1 - S), q = V * (1 - S * f), t = V * (1 - S * (1 - f));
+  const [r, g, b] = [[V, t, p], [q, V, p], [p, V, t], [p, q, V], [t, p, V], [V, p, q]][i];
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+function rgbToHsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r)      h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else                h = (r - g) / d + 4;
+    h /= 6; if (h < 0) h += 1;
+  }
+  return [Math.round(h * 256) & 255, Math.round((max === 0 ? 0 : d / max) * 255), Math.round(max * 255)];
+}
+
+const COLOR_CALL_RE  = /color\.(rgb|hsv)\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)/g;
+const COLOR_CONST_RE = new RegExp('color\\.(' + Object.keys(PALETTE_RGB).join('|') + ')\\b', 'g');
+
 // Mount the Badgeware editor in `container` and return the Monaco instance.
 export function createEditor(container) {
   configureMonaco(monaco);
@@ -59,6 +99,9 @@ export function createEditor(container) {
     lineNumbers:    'on',
     tabSize:        2,
     insertSpaces:   true,
+    detectIndentation: false,          // house style is 2 spaces, never adopt a file's own
+    autoIndent:     'full',            // apply Python's indent-after-colon rules on Enter
+    bracketPairColorization: { enabled: true },
     automaticLayout: true,
     wordWrap:       'on',
     renderLineHighlight: 'line',
@@ -363,6 +406,95 @@ function configureMonaco(monaco) {
       const activeParameter = Math.min(call.args, Math.max(0, params.length - 1));
 
       return { value: { signatures, activeSignature, activeParameter }, dispose() {} };
+    },
+  });
+
+  /* -- Hover: show an API symbol's signature + docs on hover ------------- */
+
+  // The call form shown at the top of a hover, as plain code (no escaping).
+  function hoverTitle(entry) {
+    if (entry.signature) {
+      return Array.isArray(entry.signature) ? entry.signature[0].label : entry.signature.label;
+    }
+    const snippet = signatureFromSnippet(entry.insertText);
+    if (snippet) return snippet.label;
+    return (entry.insertText ?? entry.label).replace(/\$\{\d+:?([^}]*)\}/g, '$1');
+  }
+
+  monaco.languages.registerHoverProvider('python', {
+    provideHover(model, position) {
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+
+      const before = model.getValueInRange({
+        startLineNumber: position.lineNumber, startColumn: 1,
+        endLineNumber:   position.lineNumber, endColumn:   word.startColumn,
+      });
+      const dot = before.match(/(\w+)\s*\.\s*$/);
+
+      const entry = dot
+        ? (MEMBERS[dot[1]] ?? inferMembersFromDoc(dot[1], model.getValue()) ?? [])
+            .find(e => e.label === word.word) ?? null
+        : BADGEWARE_GLOBALS.find(e => e.label === word.word) ?? null;
+      if (!entry) return null;
+
+      const contents = [{ value: '```python\n' + hoverTitle(entry) + '\n```' }];
+      if (entry.doc) contents.push({ value: docToMarkdown(entry.doc) });
+
+      return {
+        range: {
+          startLineNumber: position.lineNumber, startColumn: word.startColumn,
+          endLineNumber:   position.lineNumber, endColumn:   word.endColumn,
+        },
+        contents,
+      };
+    },
+  });
+
+  /* -- Colour swatches + picker on color.rgb/hsv() and color.<name> ------ */
+
+  const rangeAt = (model, offset, len) => {
+    const s = model.getPositionAt(offset), e = model.getPositionAt(offset + len);
+    return { startLineNumber: s.lineNumber, startColumn: s.column,
+             endLineNumber:   e.lineNumber, endColumn:   e.column };
+  };
+  const monacoColor = (r, g, b, a) => ({ red: r / 255, green: g / 255, blue: b / 255, alpha: a / 255 });
+
+  monaco.languages.registerColorProvider('python', {
+    provideDocumentColors(model) {
+      const text = model.getValue();
+      const out = [];
+      let m;
+
+      COLOR_CALL_RE.lastIndex = 0;
+      while ((m = COLOR_CALL_RE.exec(text)) !== null) {
+        const [full, fn, a1, a2, a3, a4] = m;
+        const [r, g, b] = fn === 'rgb' ? [+a1, +a2, +a3] : hsvToRgb(+a1, +a2, +a3);
+        out.push({ range: rangeAt(model, m.index, full.length),
+                   color: monacoColor(r, g, b, a4 === undefined ? 255 : +a4) });
+      }
+
+      COLOR_CONST_RE.lastIndex = 0;
+      while ((m = COLOR_CONST_RE.exec(text)) !== null) {
+        const [r, g, b, a] = PALETTE_RGB[m[1]];
+        out.push({ range: rangeAt(model, m.index, m[0].length), color: monacoColor(r, g, b, a) });
+      }
+      return out;
+    },
+
+    provideColorPresentations(model, info) {
+      const c = info.color;
+      const r = Math.round(c.red * 255), g = Math.round(c.green * 255),
+            b = Math.round(c.blue * 255), a = Math.round(c.alpha * 255);
+      const tail = a < 255 ? `, ${a})` : ')';
+
+      // Keep an hsv() call in hsv; everything else (rgb calls and palette
+      // constants) becomes an rgb() call when edited.
+      const label = model.getValueInRange(info.range).startsWith('color.hsv')
+        ? `color.hsv(${rgbToHsv(r, g, b).join(', ')}${tail}`
+        : `color.rgb(${r}, ${g}, ${b}${tail}`;
+
+      return [{ label, textEdit: { range: info.range, text: label } }];
     },
   });
 
