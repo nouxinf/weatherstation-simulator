@@ -5,6 +5,45 @@
 import { BADGEWARE_GLOBALS, MEMBERS } from './completions.js';
 import { userFS, getSystemPaths } from './fs.js';
 
+/* -- Help text -> markdown ----------------------------------------------------
+   Completion/signature `documentation` renders as markdown when handed an
+   IMarkdownString. We keep the doc strings in completions.js as plain text and
+   format them here: API tokens (types, calls, module.CONST, ALL_CAPS) become
+   monospace code spans, everything else is markdown-escaped so prose like
+   [sprite:name], *args and <= survives verbatim. */
+const MD_TYPES = 'vec2|rect|mat3|indexed_image|image|color|brush|shape|spritesheet|tween|pixel_font|vector_font|font';
+const MD_ROOTS = 'screen|image|badge|display|shape|color|brush|text|font|rtc|mat3|vec2|rect|tween|spritesheet|algorithm|loop|State';
+// Tried in order at each position; the first (longest, call-shaped) wins.
+const MD_CODE_RE = new RegExp(
+  '[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*\\([^)\\n]*\\)' +   // calls: vec2(80, 60), screen.text()
+  `|(?:${MD_ROOTS})\\.[A-Za-z_]\\w*` +                   // dotted API names: image.X4, font.sins
+  `|\\b(?:${MD_TYPES})\\b` +                             // bare type names: a vec2
+  '|\\b[A-Z][A-Z0-9_]{2,}\\b',                           // ALL_CAPS constants: LORES, NON_ZERO
+  'g');
+
+function escapeMarkdown(text) {
+  return text.replace(/[\\`*[\]<]/g, m => '\\' + m);
+}
+
+function docToMarkdown(doc) {
+  if (!doc) return doc;
+  let out = '', last = 0, m;
+  MD_CODE_RE.lastIndex = 0;
+  while ((m = MD_CODE_RE.exec(doc)) !== null) {
+    out += escapeMarkdown(doc.slice(last, m.index)) + '`' + m[0] + '`';
+    last = m.index + m[0].length;
+  }
+  out += escapeMarkdown(doc.slice(last));
+  // Single newlines are soft breaks in markdown; keep them as hard breaks so
+  // multi-line docs read as written.
+  return out.replace(/\n/g, '  \n');
+}
+
+// documentation field as an IMarkdownString, or undefined when there's no doc.
+function docField(doc) {
+  return doc ? { value: docToMarkdown(doc) } : undefined;
+}
+
 // Mount the Badgeware editor in `container` and return the Monaco instance.
 export function createEditor(container) {
   configureMonaco(monaco);
@@ -51,7 +90,7 @@ function toCompletionItem(entry, range, monaco) {
     label:           entry.label,
     kind:            kindMap[entry.kind] ?? K.Variable,
     detail:          entry.detail,
-    documentation:   entry.doc,
+    documentation:   docField(entry.doc),
     insertText,
     insertTextRules: isSnippet
       ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
@@ -80,11 +119,10 @@ function configureMonaco(monaco) {
     // Factory call on a known module/type
     switch (typeName) {
       case 'shape':      return MEMBERS.shape;               // any shape.* → shape instance
-      case 'image':      return (method === 'load' || method === 'window') ? MEMBERS.image : null;
-      case 'screen':     return method === 'window' ? MEMBERS.image : null;
-      case 'SpriteSheet': {
-        if (method === 'animation') return MEMBERS.AnimatedSprite;
-        if (method === 'sprite')    return MEMBERS.image;
+      case 'image':
+      case 'screen': {
+        if (method === 'load' || method === 'window' || method === 'sprite') return MEMBERS.image;
+        if (method === 'spritesheet') return MEMBERS.spritesheet;
         return null;
       }
       default:           return null;
@@ -206,6 +244,125 @@ function configureMonaco(monaco) {
         endColumn:       word.endColumn,
       };
       return { suggestions: BADGEWARE_GLOBALS.map(m => toCompletionItem(m, range, monaco)) };
+    },
+  });
+
+  /* -- Signature help: parameter hints while typing inside a call --------
+     Reuses the completion data. An entry may carry an explicit `signature`
+     (a rich, per-parameter form, or an array of overloads); otherwise one is
+     derived from its insertText snippet so every callable still hints.      */
+
+  // "text(${1:text}, ${2:at})" -> { label: 'text(text, at)', params: [[5,9],[11,13]] }
+  // with character ranges Monaco highlights as the active argument.
+  function signatureFromSnippet(insertText) {
+    if (!insertText || insertText.indexOf('(') === -1) return null;
+    let label = '';
+    const params = [];
+    for (let i = 0; i < insertText.length; ) {
+      if (insertText[i] === '$' && insertText[i + 1] === '{') {
+        const end = insertText.indexOf('}', i);
+        if (end === -1) { label += insertText[i++]; continue; }
+        const body  = insertText.slice(i + 2, end);      // "1:name" or "1"
+        const colon = body.indexOf(':');
+        const name  = colon === -1 ? 'arg' + body : body.slice(colon + 1);
+        const start = label.length;
+        label += name;
+        params.push([start, label.length]);
+        i = end + 1;
+      } else {
+        label += insertText[i++];
+      }
+    }
+    return params.length ? { label, params } : null;
+  }
+
+  // Monaco SignatureInformation[] for an entry (one per overload).
+  function signaturesForEntry(entry) {
+    const build = sig => ({
+      label: sig.label,
+      documentation: docField(entry.doc),
+      // Explicit params are { label, doc }; snippet params are [start, end] ranges.
+      parameters: sig.params.map(p =>
+        (p && p.label !== undefined)
+          ? { label: p.label, documentation: docField(p.doc) }
+          : { label: p }),
+    });
+    if (entry.signature) {
+      return Array.isArray(entry.signature) ? entry.signature.map(build) : [build(entry.signature)];
+    }
+    const snippet = signatureFromSnippet(entry.insertText);
+    return snippet ? [build(snippet)] : null;
+  }
+
+  // Walk the text left-to-right tracking a paren/bracket stack, skipping string
+  // literals, and return the innermost open call: its receiver, name and how
+  // many top-level commas (arguments) precede the cursor.
+  function findCall(text) {
+    const stack = [];
+    for (let i = 0; i < text.length; ) {
+      const ch = text[i];
+      if (ch === '"' || ch === "'") {
+        const quote = ch; i++;
+        while (i < text.length && text[i] !== quote) { if (text[i] === '\\') i++; i++; }
+        i++; continue;
+      }
+      if (ch === '(') {
+        const before = text.slice(0, i);
+        const m = before.match(/(?:([A-Za-z_]\w*)\s*\.\s*)?([A-Za-z_]\w*)\s*$/);
+        stack.push(m ? { receiver: m[1] || null, name: m[2], args: 0 } : { bracket: true });
+        i++; continue;
+      }
+      if (ch === '[' || ch === '{') { stack.push({ bracket: true }); i++; continue; }
+      if (ch === ')' || ch === ']' || ch === '}') { stack.pop(); i++; continue; }
+      if (ch === ',' && stack.length) {
+        const top = stack[stack.length - 1];
+        if (!top.bracket) top.args++;
+        i++; continue;
+      }
+      i++;
+    }
+    for (let k = stack.length - 1; k >= 0; k--) if (!stack[k].bracket) return stack[k];
+    return null;
+  }
+
+  function entryForCall(call, docText) {
+    if (call.receiver) {
+      const members = MEMBERS[call.receiver] ?? inferMembersFromDoc(call.receiver, docText);
+      return members ? members.find(e => e.label === call.name) ?? null : null;
+    }
+    return BADGEWARE_GLOBALS.find(e => e.label === call.name) ?? null;
+  }
+
+  monaco.languages.registerSignatureHelpProvider('python', {
+    signatureHelpTriggerCharacters:   ['(', ','],
+    signatureHelpRetriggerCharacters: [','],
+
+    provideSignatureHelp(model, position) {
+      const linePrefix = model.getValueInRange({
+        startLineNumber: position.lineNumber, startColumn: 1,
+        endLineNumber:   position.lineNumber, endColumn:   position.column,
+      });
+
+      const call = findCall(linePrefix);
+      if (!call || !call.name) return null;
+
+      const entry = entryForCall(call, model.getValue());
+      if (!entry) return null;
+
+      const signatures = signaturesForEntry(entry);
+      if (!signatures) return null;
+
+      // For overloads, pick the first whose parameter count still fits the args
+      // typed so far (falling back to the widest).
+      let activeSignature = 0;
+      if (signatures.length > 1) {
+        const fit = signatures.findIndex(s => call.args < s.parameters.length);
+        activeSignature = fit === -1 ? signatures.length - 1 : fit;
+      }
+      const params = signatures[activeSignature].parameters;
+      const activeParameter = Math.min(call.args, Math.max(0, params.length - 1));
+
+      return { value: { signatures, activeSignature, activeParameter }, dispose() {} };
     },
   });
 
