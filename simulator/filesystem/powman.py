@@ -16,3 +16,7 @@ def pressed_to_wake():
 
 def sleep():
     pass
+
+
+def reset_into_msc():
+    fatal_error("Error!", "MSC not supported in the simulator.")

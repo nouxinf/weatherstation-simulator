@@ -37,13 +37,22 @@ export const BADGEWARE_GLOBALS = [
   { label: 'X2',  kind: 'Constant', detail: 'image.X2',  doc: 'Anti-aliasing: 2× supersample.' },
   { label: 'X4',  kind: 'Constant', detail: 'image.X4',  doc: 'Anti-aliasing: 4× supersample.' },
 
+  // -- Text alignment & clip constants ----------------------------------------
+  { label: 'LEFT',     kind: 'Constant', detail: 'image.LEFT',   doc: 'Text align: Left' },
+  { label: 'CENTER',   kind: 'Constant', detail: 'image.CENTER', doc: 'Text align: Center' },
+  { label: 'RIGHT',    kind: 'Constant', detail: 'image.RIGHT',  doc: 'Text align: Right' },
+  { label: 'TOP',      kind: 'Constant', detail: 'image.TOP',    doc: 'Text vertical align: Top' },
+  { label: 'MIDDLE',   kind: 'Constant', detail: 'image.MIDDLE', doc: 'Text vertical align: Middle' },
+  { label: 'BOTTOM',   kind: 'Constant', detail: 'image.BOTTOM', doc: 'Text vertical align: Bottom' },
+  { label: 'CLIP',     kind: 'Constant', detail: 'image.CLIP',   doc: 'Text clip: Clip overflowed text' },
+  { label: 'ELLIPSES', kind: 'Constant', detail: 'image.ELLIPSES',  doc: 'Text clip: Show an ellipsis continuation' },
+
   // -- Global instances -------------------------------------------------------
   { label: 'screen',   kind: 'Variable', detail: 'image',      doc: 'The active display canvas. 160×120 in LORES, 320×240 in HIRES. Set screen.pen and call screen.clear(), screen.text(), screen.shape().' },
   { label: 'badge',    kind: 'Variable', detail: 'Badge',      doc: 'Badge hardware interface: buttons, battery, display mode, LEDs.' },
   { label: 'shape',    kind: 'Module',   detail: 'module',     doc: 'Shape factory (picovector): shape.rectangle(), shape.circle(), shape.custom(), …' },
   { label: 'color',    kind: 'Module',   detail: 'module',     doc: 'Color factory: color.rgb(r, g, b), color.hsv(h, s, v).' },
-  { label: 'rom_font', kind: 'Variable', detail: 'ROMFonts',   doc: 'Built-in ROM pixel fonts. Access by name: rom_font.sins, rom_font.hungry, etc.' },
-  { label: 'text',     kind: 'Module',   detail: '_text',      doc: 'Text layout utilities: text.draw(), text.scroll(), text.tokenise().' },
+  { label: 'text',     kind: 'Module',   detail: '_text',      doc: 'Text layout utilities: text.scroll().' },
   { label: 'rtc',      kind: 'Variable', detail: 'RTC',        doc: 'Real-time clock: get/set datetime, alarms, countdown timers.' },
   { label: 'loop',     kind: 'Variable', detail: '_run | None', doc: 'Current animation loop context (None outside a loop). Provides loop.ticks and loop.progress.' },
 
@@ -55,9 +64,7 @@ export const BADGEWARE_GLOBALS = [
   { label: 'image',        kind: 'Class', insertText: 'image(${1:width}, ${2:height})',
     doc: 'Off-screen image buffer. Also a namespace: image.load(file), image.OFF / X2 / X4.' },
   { label: 'font',         kind: 'Class', insertText: 'font.load(${1:"path.af"})',
-    doc: 'Vector font (.af files). Load with font.load(path).' },
-  { label: 'pixel_font',   kind: 'Class', insertText: 'pixel_font.load(${1:"path.ppf"})',
-    doc: 'Bitmap / pixel font (.ppf files). Load with pixel_font.load(path).' },
+    doc: 'Vector/Pixel font (.af files). Load with font.load(path).' },
   { label: 'run',          kind: 'Class', insertText: 'run(${1:update})',
     doc: 'Run an animation loop. Use as a decorator @run or call run(fn). Optional: run(duration=ms).\nThe update() function is called every frame; return a value to exit.' },
   { label: 'SpriteSheet',  kind: 'Class', insertText: 'SpriteSheet(${1:file}, ${2:columns}, ${3:rows})',
@@ -294,7 +301,7 @@ export const MEMBERS = {
     { label: 'width',        kind: 'Property', doc: 'Display width in pixels (160 in LORES, 320 in HIRES).' },
     { label: 'height',       kind: 'Property', doc: 'Display height in pixels (120 in LORES, 240 in HIRES).' },
     { label: 'pen',          kind: 'Property', doc: 'Current draw color. Assign a color value: screen.pen = color.rgb(255, 0, 0).' },
-    { label: 'font',         kind: 'Property', doc: 'Current font (pixel_font or font instance). Default: rom_font.sins.' },
+    { label: 'font',         kind: 'Property', doc: 'Current font (pixel_font or font instance). Default: font.sins.' },
     { label: 'clip',         kind: 'Property', doc: 'Current clip rect (rect). Assign to restrict drawing area.' },
     { label: 'antialias',    kind: 'Property', doc: 'Anti-aliasing mode: OFF, X2, or X4.' },
     { label: 'clear',        kind: 'Method', insertText: 'clear()',
@@ -467,16 +474,12 @@ export const MEMBERS = {
 
   // -- Badgeware: text module -------------------------------------------------
   text: [
-    { label: 'draw',     kind: 'Method', insertText: 'draw(${1:image}, ${2:text})',
-      doc: 'Draw word-wrapped text into an image.\nArgs: image, text (str), bounds=None (rect), line_spacing=1, word_spacing=1, size=24.\nReturns the bounding rect of drawn text.' },
     { label: 'scroll',   kind: 'Method', insertText: 'scroll(${1:text})',
       doc: 'Create a scrolling-text update() function.\nArgs: text (str), font_face=None, font_size=None, target=None, speed=25, gap=None, align="middle".\nReturns an update function.' },
-    { label: 'tokenise', kind: 'Method', insertText: 'tokenise(${1:image}, ${2:text})',
-      doc: 'Tokenise text into a list for manual layout. Returns a token list compatible with text.draw().' },
   ],
 
-  // -- Badgeware: rom_font ----------------------------------------------------
-  rom_font: [
+  // -- Badgeware: font --------------------------------------------------------
+  font: [
     { label: 'sins',     kind: 'Property', doc: 'ROM pixel font: sins (default system font).' },
     { label: 'absolute', kind: 'Property', doc: 'ROM pixel font: absolute.' },
     { label: 'vest',     kind: 'Property', doc: 'ROM pixel font: vest.' },
