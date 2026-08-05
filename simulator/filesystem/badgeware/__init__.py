@@ -133,8 +133,18 @@ def message(title, msg, window=None):
     error_window.pen = color.rgb(255, 100, 100, 240)
     error_window.shape(heading)
 
-    error_window.pen = color.rgb(255, 200, 200)
+    error_window.pen = color.rgb(50, 100, 50)
+    tw = 35
+    error_window.shape(
+        shape.rounded_rectangle(
+            error_window.width - tw - 36, error_window.height - 12, tw, 12, 3, 3, 0, 0
+        )
+    )
 
+    error_window.pen = color.rgb(255, 200, 200)
+    error_window.text(
+        "Okay", error_window.width - tw + 5 - 36, error_window.height - 12
+    )
     y = 0
     error_window.text(title, 5, y)
     y += 17
@@ -146,7 +156,7 @@ def message(title, msg, window=None):
     bounds.x += 5
     bounds.w -= 10
 
-    text.draw(error_window, msg, bounds=bounds)
+    error_window.text(msg, bounds)
 
 
 def fatal_error(title, error):
@@ -164,6 +174,15 @@ def fatal_error(title, error):
     message(title, error)
 
     display.update()
+    while True:
+        badge.poll()
+        if badge.pressed():
+            break
+        time.sleep(0.001)
+    while badge.pressed():
+        badge.poll()
+
+    machine.reset()
 
 
 display = st7789.ST7789()
@@ -179,6 +198,16 @@ builtins.OFF = image.OFF
 builtins.X2 = image.X2
 builtins.X4 = image.X4
 
+# Hoist screen.text align/overflow constants
+builtins.LEFT = image.LEFT
+builtins.CENTER = image.CENTER
+builtins.RIGHT = image.RIGHT
+builtins.TOP = image.TOP
+builtins.MIDDLE = image.MIDDLE
+builtins.BOTTOM = image.BOTTOM
+builtins.CLIP = image.CLIP
+builtins.ELLIPSES = image.ELLIPSES
+
 # Hoist display and run for clean Thonny apps
 builtins.display = display
 builtins.run = _run
@@ -188,39 +217,17 @@ builtins.reset = reset
 builtins.fatal_error = fatal_error
 
 # Import badgeware modules
+# These *must* remain badgeware/ and not .frozen/ on the simulator.
 __import__("badgeware/badge")
 __import__("badgeware/math")
 __import__("badgeware/text")
-__import__("badgeware/sprite")
 __import__("badgeware/filesystem")
 __import__("badgeware/memory")
 __import__("badgeware/rtc")
 State = __import__("badgeware/state").State
 
-DEFAULT_FONT = rom_font.sins
+DEFAULT_FONT = font.sins
 
 badge.mode(LORES | VSYNC)
 badge.default_pen = color.white
 badge.default_clear = color.black
-
-
-failed = False
-
-def _update(update):
-    global failed
-    if not failed:
-        badge.clear()
-        badge.poll()
-        try:
-            result = update()
-            if result is not None:
-                console.log(f"LAUNCH: {result}")
-                launch(result)
-        except Exception as e:  # noqa: BLE001
-            fatal_error("Error!", get_exception(e))
-            failed = True
-        gc.collect()
-    display.update()
-
-
-builtins._update = _update

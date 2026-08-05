@@ -5,6 +5,85 @@
 import { BADGEWARE_GLOBALS, MEMBERS } from './completions.js';
 import { userFS, getSystemPaths } from './fs.js';
 
+/* -- Help text -> markdown ----------------------------------------------------
+   Completion/signature `documentation` renders as markdown when handed an
+   IMarkdownString. We keep the doc strings in completions.js as plain text and
+   format them here: API tokens (types, calls, module.CONST, ALL_CAPS) become
+   monospace code spans, everything else is markdown-escaped so prose like
+   [sprite:name], *args and <= survives verbatim. */
+const MD_TYPES = 'vec2|rect|mat3|indexed_image|image|color|brush|shape|spritesheet|tween|pixel_font|vector_font|font';
+const MD_ROOTS = 'screen|image|badge|display|shape|color|brush|text|font|rtc|mat3|vec2|rect|tween|spritesheet|algorithm|loop|State';
+// Tried in order at each position; the first (longest, call-shaped) wins.
+const MD_CODE_RE = new RegExp(
+  '[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*\\([^)\\n]*\\)' +   // calls: vec2(80, 60), screen.text()
+  `|(?:${MD_ROOTS})\\.[A-Za-z_]\\w*` +                   // dotted API names: image.X4, font.sins
+  `|\\b(?:${MD_TYPES})\\b` +                             // bare type names: a vec2
+  '|\\b[A-Z][A-Z0-9_]{2,}\\b',                           // ALL_CAPS constants: LORES, NON_ZERO
+  'g');
+
+function escapeMarkdown(text) {
+  return text.replace(/[\\`*[\]<]/g, m => '\\' + m);
+}
+
+function docToMarkdown(doc) {
+  if (!doc) return doc;
+  let out = '', last = 0, m;
+  MD_CODE_RE.lastIndex = 0;
+  while ((m = MD_CODE_RE.exec(doc)) !== null) {
+    out += escapeMarkdown(doc.slice(last, m.index)) + '`' + m[0] + '`';
+    last = m.index + m[0].length;
+  }
+  out += escapeMarkdown(doc.slice(last));
+  // Single newlines are soft breaks in markdown; keep them as hard breaks so
+  // multi-line docs read as written.
+  return out.replace(/\n/g, '  \n');
+}
+
+// documentation field as an IMarkdownString, or undefined when there's no doc.
+function docField(doc) {
+  return doc ? { value: docToMarkdown(doc) } : undefined;
+}
+
+/* -- Colour swatches ----------------------------------------------------------
+   Palette values from picovector api/color.py, resolved for Tufty (the sim's
+   model): black and white take the Tufty tuples - a dark blue-black and an
+   off-white, not pure 000/fff. Used to draw a swatch next to color.<name> and
+   to seed the picker on color.rgb()/color.hsv() calls. */
+const PALETTE_RGB = {
+  black:  [0x14, 0x1e, 0x28, 255], grape: [0x44, 0x24, 0x34, 255], navy:  [0x30, 0x34, 0x6d, 255],
+  grey:   [0x4e, 0x4a, 0x4e, 255], brown: [0x85, 0x4c, 0x30, 255], green: [0x34, 0x65, 0x24, 255],
+  red:    [0xd0, 0x46, 0x48, 255], taupe: [0x75, 0x71, 0x61, 255], blue:  [0x59, 0x7d, 0xce, 255],
+  orange: [0xd2, 0x7d, 0x2c, 255], smoke: [0x85, 0x95, 0xa1, 255], lime:  [0x6d, 0xaa, 0x2c, 255],
+  latte:  [0xd2, 0xaa, 0x99, 255], cyan:  [0x6d, 0xc2, 0xca, 255], yellow:[0xda, 0xd4, 0x5e, 255],
+  white:  [0xde, 0xee, 0xd6, 255], transparent: [0x00, 0x00, 0x00, 0],
+  light_grey: [0xc0, 0xc0, 0xc0, 255], dark_grey: [0x40, 0x40, 0x40, 255],
+};
+
+// Badge HSV: h, s, v each 0-255, hue is 256 counts to a full turn.
+function hsvToRgb(h, s, v) {
+  const H = (h / 256) * 6, S = s / 255, V = v / 255;
+  const i = ((Math.floor(H) % 6) + 6) % 6, f = H - Math.floor(H);
+  const p = V * (1 - S), q = V * (1 - S * f), t = V * (1 - S * (1 - f));
+  const [r, g, b] = [[V, t, p], [q, V, p], [p, V, t], [p, q, V], [t, p, V], [V, p, q]][i];
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+function rgbToHsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r)      h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else                h = (r - g) / d + 4;
+    h /= 6; if (h < 0) h += 1;
+  }
+  return [Math.round(h * 256) & 255, Math.round((max === 0 ? 0 : d / max) * 255), Math.round(max * 255)];
+}
+
+const COLOR_CALL_RE  = /color\.(rgb|hsv)\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)/g;
+const COLOR_CONST_RE = new RegExp('color\\.(' + Object.keys(PALETTE_RGB).join('|') + ')\\b', 'g');
+
 // Mount the Badgeware editor in `container` and return the Monaco instance.
 export function createEditor(container) {
   configureMonaco(monaco);
@@ -20,6 +99,9 @@ export function createEditor(container) {
     lineNumbers:    'on',
     tabSize:        2,
     insertSpaces:   true,
+    detectIndentation: false,          // house style is 2 spaces, never adopt a file's own
+    autoIndent:     'full',            // apply Python's indent-after-colon rules on Enter
+    bracketPairColorization: { enabled: true },
     automaticLayout: true,
     wordWrap:       'on',
     renderLineHighlight: 'line',
@@ -51,7 +133,7 @@ function toCompletionItem(entry, range, monaco) {
     label:           entry.label,
     kind:            kindMap[entry.kind] ?? K.Variable,
     detail:          entry.detail,
-    documentation:   entry.doc,
+    documentation:   docField(entry.doc),
     insertText,
     insertTextRules: isSnippet
       ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
@@ -80,11 +162,10 @@ function configureMonaco(monaco) {
     // Factory call on a known module/type
     switch (typeName) {
       case 'shape':      return MEMBERS.shape;               // any shape.* → shape instance
-      case 'image':      return (method === 'load' || method === 'window') ? MEMBERS.image : null;
-      case 'screen':     return method === 'window' ? MEMBERS.image : null;
-      case 'SpriteSheet': {
-        if (method === 'animation') return MEMBERS.AnimatedSprite;
-        if (method === 'sprite')    return MEMBERS.image;
+      case 'image':
+      case 'screen': {
+        if (method === 'load' || method === 'window' || method === 'sprite') return MEMBERS.image;
+        if (method === 'spritesheet') return MEMBERS.spritesheet;
         return null;
       }
       default:           return null;
@@ -206,6 +287,214 @@ function configureMonaco(monaco) {
         endColumn:       word.endColumn,
       };
       return { suggestions: BADGEWARE_GLOBALS.map(m => toCompletionItem(m, range, monaco)) };
+    },
+  });
+
+  /* -- Signature help: parameter hints while typing inside a call --------
+     Reuses the completion data. An entry may carry an explicit `signature`
+     (a rich, per-parameter form, or an array of overloads); otherwise one is
+     derived from its insertText snippet so every callable still hints.      */
+
+  // "text(${1:text}, ${2:at})" -> { label: 'text(text, at)', params: [[5,9],[11,13]] }
+  // with character ranges Monaco highlights as the active argument.
+  function signatureFromSnippet(insertText) {
+    if (!insertText || insertText.indexOf('(') === -1) return null;
+    let label = '';
+    const params = [];
+    for (let i = 0; i < insertText.length; ) {
+      if (insertText[i] === '$' && insertText[i + 1] === '{') {
+        const end = insertText.indexOf('}', i);
+        if (end === -1) { label += insertText[i++]; continue; }
+        const body  = insertText.slice(i + 2, end);      // "1:name" or "1"
+        const colon = body.indexOf(':');
+        const name  = colon === -1 ? 'arg' + body : body.slice(colon + 1);
+        const start = label.length;
+        label += name;
+        params.push([start, label.length]);
+        i = end + 1;
+      } else {
+        label += insertText[i++];
+      }
+    }
+    return params.length ? { label, params } : null;
+  }
+
+  // Monaco SignatureInformation[] for an entry (one per overload).
+  function signaturesForEntry(entry) {
+    const build = sig => ({
+      label: sig.label,
+      documentation: docField(entry.doc),
+      // Explicit params are { label, doc }; snippet params are [start, end] ranges.
+      parameters: sig.params.map(p =>
+        (p && p.label !== undefined)
+          ? { label: p.label, documentation: docField(p.doc) }
+          : { label: p }),
+    });
+    if (entry.signature) {
+      return Array.isArray(entry.signature) ? entry.signature.map(build) : [build(entry.signature)];
+    }
+    const snippet = signatureFromSnippet(entry.insertText);
+    return snippet ? [build(snippet)] : null;
+  }
+
+  // Walk the text left-to-right tracking a paren/bracket stack, skipping string
+  // literals, and return the innermost open call: its receiver, name and how
+  // many top-level commas (arguments) precede the cursor.
+  function findCall(text) {
+    const stack = [];
+    for (let i = 0; i < text.length; ) {
+      const ch = text[i];
+      if (ch === '"' || ch === "'") {
+        const quote = ch; i++;
+        while (i < text.length && text[i] !== quote) { if (text[i] === '\\') i++; i++; }
+        i++; continue;
+      }
+      if (ch === '(') {
+        const before = text.slice(0, i);
+        const m = before.match(/(?:([A-Za-z_]\w*)\s*\.\s*)?([A-Za-z_]\w*)\s*$/);
+        stack.push(m ? { receiver: m[1] || null, name: m[2], args: 0 } : { bracket: true });
+        i++; continue;
+      }
+      if (ch === '[' || ch === '{') { stack.push({ bracket: true }); i++; continue; }
+      if (ch === ')' || ch === ']' || ch === '}') { stack.pop(); i++; continue; }
+      if (ch === ',' && stack.length) {
+        const top = stack[stack.length - 1];
+        if (!top.bracket) top.args++;
+        i++; continue;
+      }
+      i++;
+    }
+    for (let k = stack.length - 1; k >= 0; k--) if (!stack[k].bracket) return stack[k];
+    return null;
+  }
+
+  function entryForCall(call, docText) {
+    if (call.receiver) {
+      const members = MEMBERS[call.receiver] ?? inferMembersFromDoc(call.receiver, docText);
+      return members ? members.find(e => e.label === call.name) ?? null : null;
+    }
+    return BADGEWARE_GLOBALS.find(e => e.label === call.name) ?? null;
+  }
+
+  monaco.languages.registerSignatureHelpProvider('python', {
+    signatureHelpTriggerCharacters:   ['(', ','],
+    signatureHelpRetriggerCharacters: [','],
+
+    provideSignatureHelp(model, position) {
+      const linePrefix = model.getValueInRange({
+        startLineNumber: position.lineNumber, startColumn: 1,
+        endLineNumber:   position.lineNumber, endColumn:   position.column,
+      });
+
+      const call = findCall(linePrefix);
+      if (!call || !call.name) return null;
+
+      const entry = entryForCall(call, model.getValue());
+      if (!entry) return null;
+
+      const signatures = signaturesForEntry(entry);
+      if (!signatures) return null;
+
+      // For overloads, pick the first whose parameter count still fits the args
+      // typed so far (falling back to the widest).
+      let activeSignature = 0;
+      if (signatures.length > 1) {
+        const fit = signatures.findIndex(s => call.args < s.parameters.length);
+        activeSignature = fit === -1 ? signatures.length - 1 : fit;
+      }
+      const params = signatures[activeSignature].parameters;
+      const activeParameter = Math.min(call.args, Math.max(0, params.length - 1));
+
+      return { value: { signatures, activeSignature, activeParameter }, dispose() {} };
+    },
+  });
+
+  /* -- Hover: show an API symbol's signature + docs on hover ------------- */
+
+  // The call form shown at the top of a hover, as plain code (no escaping).
+  function hoverTitle(entry) {
+    if (entry.signature) {
+      return Array.isArray(entry.signature) ? entry.signature[0].label : entry.signature.label;
+    }
+    const snippet = signatureFromSnippet(entry.insertText);
+    if (snippet) return snippet.label;
+    return (entry.insertText ?? entry.label).replace(/\$\{\d+:?([^}]*)\}/g, '$1');
+  }
+
+  monaco.languages.registerHoverProvider('python', {
+    provideHover(model, position) {
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+
+      const before = model.getValueInRange({
+        startLineNumber: position.lineNumber, startColumn: 1,
+        endLineNumber:   position.lineNumber, endColumn:   word.startColumn,
+      });
+      const dot = before.match(/(\w+)\s*\.\s*$/);
+
+      const entry = dot
+        ? (MEMBERS[dot[1]] ?? inferMembersFromDoc(dot[1], model.getValue()) ?? [])
+            .find(e => e.label === word.word) ?? null
+        : BADGEWARE_GLOBALS.find(e => e.label === word.word) ?? null;
+      if (!entry) return null;
+
+      const contents = [{ value: '```python\n' + hoverTitle(entry) + '\n```' }];
+      if (entry.doc) contents.push({ value: docToMarkdown(entry.doc) });
+
+      return {
+        range: {
+          startLineNumber: position.lineNumber, startColumn: word.startColumn,
+          endLineNumber:   position.lineNumber, endColumn:   word.endColumn,
+        },
+        contents,
+      };
+    },
+  });
+
+  /* -- Colour swatches + picker on color.rgb/hsv() and color.<name> ------ */
+
+  const rangeAt = (model, offset, len) => {
+    const s = model.getPositionAt(offset), e = model.getPositionAt(offset + len);
+    return { startLineNumber: s.lineNumber, startColumn: s.column,
+             endLineNumber:   e.lineNumber, endColumn:   e.column };
+  };
+  const monacoColor = (r, g, b, a) => ({ red: r / 255, green: g / 255, blue: b / 255, alpha: a / 255 });
+
+  monaco.languages.registerColorProvider('python', {
+    provideDocumentColors(model) {
+      const text = model.getValue();
+      const out = [];
+      let m;
+
+      COLOR_CALL_RE.lastIndex = 0;
+      while ((m = COLOR_CALL_RE.exec(text)) !== null) {
+        const [full, fn, a1, a2, a3, a4] = m;
+        const [r, g, b] = fn === 'rgb' ? [+a1, +a2, +a3] : hsvToRgb(+a1, +a2, +a3);
+        out.push({ range: rangeAt(model, m.index, full.length),
+                   color: monacoColor(r, g, b, a4 === undefined ? 255 : +a4) });
+      }
+
+      COLOR_CONST_RE.lastIndex = 0;
+      while ((m = COLOR_CONST_RE.exec(text)) !== null) {
+        const [r, g, b, a] = PALETTE_RGB[m[1]];
+        out.push({ range: rangeAt(model, m.index, m[0].length), color: monacoColor(r, g, b, a) });
+      }
+      return out;
+    },
+
+    provideColorPresentations(model, info) {
+      const c = info.color;
+      const r = Math.round(c.red * 255), g = Math.round(c.green * 255),
+            b = Math.round(c.blue * 255), a = Math.round(c.alpha * 255);
+      const tail = a < 255 ? `, ${a})` : ')';
+
+      // Keep an hsv() call in hsv; everything else (rgb calls and palette
+      // constants) becomes an rgb() call when edited.
+      const label = model.getValueInRange(info.range).startsWith('color.hsv')
+        ? `color.hsv(${rgbToHsv(r, g, b).join(', ')}${tail}`
+        : `color.rgb(${r}, ${g}, ${b}${tail}`;
+
+      return [{ label, textEdit: { range: info.range, text: label } }];
     },
   });
 

@@ -63,17 +63,6 @@ minimap_overlay = image(MAP_SIZE_X * minimap_scale, MAP_SIZE_Y * minimap_scale)
 minimap_overlay_mv = memoryview(minimap_overlay)
 minimap_overlay_len = minimap_overlay.width * minimap_overlay.height
 
-
-# @micropython.viper  - a native memset. The viper emitter isn't in the WASM
-# build, so it's shimmed with the plain-Python loop below (slower, but it runs).
-# def clear(buf: ptr32, length: int):
-#   for i in range(length):
-#     buf[i] = 0
-def clear(buf, length):
-  for i in range(length):
-    buf[i] = 0
-
-
 d_proj = (screen.width / 2) / math.tan(player.fov * (math.pi / 180) / 2)
 
 
@@ -87,7 +76,8 @@ def update():
 
   if display_minimap:
     # clear the minimap overlay to 0, 0, 0, 0
-    clear(minimap_overlay_mv, minimap_overlay_len)
+    minimap_overlay.pen = brush.erase(color.rgb(0, 0, 0, 200))
+    minimap_overlay.clear()
 
     minimap_pos = player.pos * minimap_scale
 
