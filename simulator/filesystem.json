@@ -239,6 +239,8 @@
         "/system/assets/squirrel-sprites/notify.png": 805,
         "/system/assets/squirrel-sprites/running.png": 1111,
         "/system/assets/squirrel-sprites/sleep.png": 567,
+        "/system/assets/forest.png": 17715,
+        "/system/assets/tufty.png": 34957,
         "/system/assets/world.geo.json": 215029,
         "/system/contrib/blocks/__init__.py": 8772,
         "/system/contrib/blocks/draw.py": 20206,
