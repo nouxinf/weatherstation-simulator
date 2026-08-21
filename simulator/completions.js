@@ -23,7 +23,7 @@
    get positional hints, derived from their insertText snippet.
    A `signature` may also be an array, for overloaded calls (e.g. blit).        */
 const SIG_TEXT = {
-  label: 'text(text, at=None, font_size=0, align=None, overflow=None, line_height=1, word_spacing=1)',
+  label: 'text(text, at=None, font_size=0, align=None, overflow=None, line_height=1, word_spacing=1, transform=None)',
   params: [
     { label: 'text', doc: 'The string to draw. A "\\n" always starts a new line.' },
     { label: 'at=None', doc: 'A vec2 or (x, y) draws a single run from that point; a rect lays the text out word-wrapped inside those bounds; omit it to continue at the cursor (print-style).' },
@@ -32,6 +32,7 @@ const SIG_TEXT = {
     { label: 'overflow=None', doc: 'CLIP or ELLIPSES. Only applies with a rect. Default CLIP.' },
     { label: 'line_height=1', doc: 'Scales the per-line advance (rect layout only).' },
     { label: 'word_spacing=1', doc: 'Scales the space width (rect layout only).' },
+    { label: 'transform=None', doc: 'A mat3 applied to the drawn glyphs after layout - the block is laid out as usual, then mapped. Rotate about an anchor with mat3().translate(anchor).rotate(a).translate(-anchor). Layout, the caret and measure_text() stay untransformed; the returned rect is the transformed bounds. Vector fonts transform exactly; pixel fonts are resampled (slower, ragged off-axis).' },
   ],
 };
 
@@ -411,7 +412,7 @@ export const MEMBERS = {
     { label: 'shapes',       kind: 'Method', insertText: 'shapes(${1:entries})',
       doc: 'Batched shape draw. Each entry is a shape or (shape, brush/color).' },
     { label: 'text',         kind: 'Method', insertText: 'text(${1:text}, ${2:at})', signature: SIG_TEXT,
-      doc: 'Draw text with the current font; returns the drawn bounding rect.\nat: a vec2/(x, y) for one run, a rect for word-wrapped layout, or omit to continue at the cursor.\nKwargs: font_size, align=(h, v), overflow, line_height, word_spacing.' },
+      doc: 'Draw text with the current font; returns the drawn bounding rect.\nat: a vec2/(x, y) for one run, a rect for word-wrapped layout, or omit to continue at the cursor.\nKwargs: font_size, align=(h, v), overflow, line_height, word_spacing, transform (a mat3 applied to the glyphs after layout).' },
     { label: 'measure_text', kind: 'Method', insertText: 'measure_text(${1:text})', signature: SIG_MEASURE_TEXT,
       doc: 'Measure text in the current font. Returns (width, height). Pass a rect as at to measure word-wrapped.' },
     { label: 'blit',         kind: 'Method', insertText: 'blit(${1:src}, ${2:at})', signature: SIG_BLIT,
@@ -801,7 +802,7 @@ export const MEMBERS = {
     { label: 'shapes',     kind: 'Method', insertText: 'shapes(${1:entries})',
       doc: 'Batched shape draw. Each entry is a shape or (shape, brush/color).' },
     { label: 'text',       kind: 'Method',   insertText: 'text(${1:text}, ${2:at})', signature: SIG_TEXT,
-      doc: 'Draw text with the current font; returns the drawn bounding rect. at: vec2 for one run, rect for word-wrap, or omit to continue at the cursor. Kwargs: font_size, align, overflow, line_height, word_spacing.' },
+      doc: 'Draw text with the current font; returns the drawn bounding rect. at: vec2 for one run, rect for word-wrap, or omit to continue at the cursor. Kwargs: font_size, align, overflow, line_height, word_spacing, transform (a mat3 applied to the glyphs after layout).' },
     { label: 'measure_text', kind: 'Method', insertText: 'measure_text(${1:text})', signature: SIG_MEASURE_TEXT,
       doc: 'Measure text in the current font. Returns (width, height).' },
     { label: 'blit',       kind: 'Method',   insertText: 'blit(${1:src}, ${2:at})', signature: SIG_BLIT,
