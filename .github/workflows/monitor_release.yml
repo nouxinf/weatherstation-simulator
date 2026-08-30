@@ -66,7 +66,7 @@ jobs:
           echo "New release detected: ${{ steps.latest.outputs.tag }}"
 
           cd simulator/filesystem/system/apps/
-          git clone --depth 1 --branch "${{ steps.latest.outputs.tag }}" \ "https://github.com/${TARGET_REPO}.git"
+          git clone --depth 1 --branch "${{ steps.latest.outputs.tag }}" "https://github.com/${TARGET_REPO}.git"
 
       - name: Update state file
         if: steps.compare.outputs.new_release == 'true'
