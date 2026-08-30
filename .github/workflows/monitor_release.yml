@@ -64,7 +64,6 @@ jobs:
         if: steps.compare.outputs.new_release == 'true'
         run: |
           echo "New release detected: ${{ steps.latest.outputs.tag }}"
-          ls upstream-checkout
 
           cd simulator/filesystem/system/apps/
           git clone --depth 1 --branch "${{ steps.latest.outputs.tag }}" \ "https://github.com/${TARGET_REPO}.git"
