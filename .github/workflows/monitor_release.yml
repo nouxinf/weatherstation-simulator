@@ -1,0 +1,87 @@
+﻿name: Monitor weatherstation for new releases to update demo page
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+env:
+  TARGET_REPO: nouxinf/weatherstation
+  STATE_FILE: .github/workflows/release-state.json
+
+jobs:
+  check-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Get latest release from target repo
+        id: latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          response=$(gh api "repos/${TARGET_REPO}/releases/latest")
+
+          tag=$(echo "$response" | jq -r '.tag_name')
+          url=$(echo "$response" | jq -r '.tarball_url')
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "tarball_url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Read last seen tag
+        id: last_seen
+        run: |
+          if [ -f "$STATE_FILE" ]; then
+            last=$(jq -r '.last_tag // ""' "$STATE_FILE")
+          else
+            last=""
+          fi
+          echo "last_tag=$last" >> "$GITHUB_OUTPUT"
+
+      - name: Compare and decide whether to act
+        id: compare
+        run: |
+          if [ "${{ steps.latest.outputs.tag }}" != "${{ steps.last_seen.outputs.last_tag }}" ]; then
+            echo "new_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "new_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- Everything below only runs when a new release is found ---
+
+      - name: Remove old weatherstation version
+        if: steps.compare.outputs.new_release == 'true'
+        run: |
+          rm -rf simulator/filesystem/system/apps/weatherstation
+
+      - name: Do something with the release
+        if: steps.compare.outputs.new_release == 'true'
+        run: |
+          echo "New release detected: ${{ steps.latest.outputs.tag }}"
+          ls upstream-checkout
+
+          cd simulator/filesystem/system/apps/
+          git clone --depth 1 --branch "${{ steps.latest.outputs.tag }}" \ "https://github.com/${TARGET_REPO}.git" upstream-checkout
+
+      - name: Update state file
+        if: steps.compare.outputs.new_release == 'true'
+        run: |
+          mkdir -p "$(dirname "$STATE_FILE")"
+          jq -n --arg tag "${{ steps.latest.outputs.tag }}" \
+                --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                '{last_tag: $tag, checked_at: $date}' > "$STATE_FILE"
+
+      - name: Commit updated state
+        if: steps.compare.outputs.new_release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$STATE_FILE"
+          git commit -m "chore: record processed release ${{ steps.latest.outputs.tag }}" || echo "nothing to commit"
+          git push
