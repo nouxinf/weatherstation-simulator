@@ -63,10 +63,11 @@ jobs:
       - name: Do something with the release
         if: steps.compare.outputs.new_release == 'true'
         run: |
+          set -euo pipefail
           echo "New release detected: ${{ steps.latest.outputs.tag }}"
 
-          cd simulator/filesystem/system/apps/
-          git clone --depth 1 --branch "${{ steps.latest.outputs.tag }}" "https://github.com/${TARGET_REPO}.git"
+          mkdir -p simulator/filesystem/system/apps
+          git clone --depth 1 --branch "${{ steps.latest.outputs.tag }}" "https://github.com/${TARGET_REPO}.git" simulator/filesystem/apps/weatherstation
           rm -rf weatherstation/.git   # strip nested git metadata
 
       - name: Update state file
