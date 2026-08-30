@@ -67,6 +67,7 @@ jobs:
 
           cd simulator/filesystem/system/apps/
           git clone --depth 1 --branch "${{ steps.latest.outputs.tag }}" "https://github.com/${TARGET_REPO}.git"
+          rm -rf weatherstation/.git   # strip nested git metadata
 
       - name: Update state file
         if: steps.compare.outputs.new_release == 'true'
@@ -81,6 +82,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "$STATE_FILE"
+          git add "$STATE_FILE" simulator/filesystem/apps/weatherstation
           git commit -m "chore: record processed release ${{ steps.latest.outputs.tag }}" || echo "nothing to commit"
           git push
