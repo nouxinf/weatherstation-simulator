@@ -10,7 +10,7 @@ permissions:
 
 env:
   TARGET_REPO: nouxinf/weatherstation
-  STATE_FILE: .github/workflows/release-state.json
+  STATE_FILE: .github/release-state.json
 
 jobs:
   check-release:
