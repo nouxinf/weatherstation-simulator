@@ -67,8 +67,8 @@ jobs:
           echo "New release detected: ${{ steps.latest.outputs.tag }}"
 
           mkdir -p simulator/filesystem/system/apps
-          git clone --depth 1 --branch "${{ steps.latest.outputs.tag }}" "https://github.com/${TARGET_REPO}.git" simulator/filesystem/apps/weatherstation
-          rm -rf weatherstation/.git   # strip nested git metadata
+          git clone --depth 1 --branch "${{ steps.latest.outputs.tag }}" "https://github.com/${TARGET_REPO}.git" simulator/filesystem/system/apps/weatherstation
+          rm simulator/filesystem/system/apps/weatherstation/.git   # strip nested git metadata
 
       - name: Update state file
         if: steps.compare.outputs.new_release == 'true'
