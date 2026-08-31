@@ -13,6 +13,8 @@ def walk_files(root):
 
 # Map each path to its byte size. The size lets the worker create lazy files
 # without a synchronous HEAD probe per file (see simulator/micropython.worker.js).
-files = {f"/{p.relative_to(ROOT)}": p.stat().st_size for p in walk_files(ROOT)}
+files = {
+    f"/{p.relative_to(ROOT).as_posix()}": p.stat().st_size for p in walk_files(ROOT)
+}
 
 print(json.dumps({"files": files}, indent=4))
