@@ -203,7 +203,22 @@ export function bootSimulator() {
     // `?file=/system/apps/clock/main.py`).
     const qFile = new URLSearchParams(location.search).get('file');
     const hFile = location.hash ? decodeURIComponent(location.hash.slice(1)) : '';
-    const override = (qFile || hFile || '').trim();
+    const storedKey = 'badgeware.startupFile';
+    let storedFile = '';
+    try { storedFile = localStorage.getItem(storedKey) || ''; } catch (e) { storedFile = ''; }
+    // Optional helper: visit ?setStartup=PATH to persist a startup path (empty to clear)
+    const setStartupParam = new URLSearchParams(location.search).get('setStartup');
+    if (setStartupParam !== null) {
+      try {
+        if (setStartupParam === '') localStorage.removeItem(storedKey);
+        else localStorage.setItem(storedKey, setStartupParam);
+        // reload without the setStartup param to apply it
+        const url = new URL(location.href);
+        url.searchParams.delete('setStartup');
+        location.replace(url.href);
+      } catch (e) { /* ignore storage errors */ }
+    }
+    const override = (qFile || hFile || storedFile || '').trim();
 
     let defaultCode = null, startupFile = null, warn = null;
     if (override) {
@@ -233,7 +248,7 @@ export function bootSimulator() {
       defaultCode = await fetch(BOOT_BASE + 'filesystem/system/main.py')
         .then(r => r.ok ? r.text() : null)
         .catch(() => null)
-        ?? 'badge.mode(HIRES)\n\ndef update():\n    screen.text("Hello!", 10, 10)\n';
+        ?? 'badge.mode(HIRES)\n\nfunction update():\n    screen.text("Hello!", 10, 10)\n';
     }
     // Run it now, in parallel with Monaco loading — don't await the program itself.
     runProgram(defaultCode, { tabKey: startupFile ? startupFile.tabKey : null });
@@ -261,6 +276,18 @@ export function bootSimulator() {
       // Register the reaction to a program changing user files (host reloads the
       // userFS cache and repaints the Files panel).
       setFsChangedHandler: (fn) => { fsChangedHandler = fn; },
+      // Persisted startup file helpers. Use setStartupFile(path) to persist a file
+      // (path like '/system/apps/weatherstation/main.py' or 'examples/blink.py').
+      // Pass null/'' to clear.
+      setStartupFile: (path) => {
+        try {
+          if (path) localStorage.setItem(storedKey, path);
+          else localStorage.removeItem(storedKey);
+        } catch (e) { /* ignore */ }
+      },
+      getStartupFile: () => {
+        try { return localStorage.getItem(storedKey) || null; } catch (e) { return null; }
+      },
     };
   })();
   return _bootCtx;
