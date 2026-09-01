@@ -5,23 +5,33 @@
    wires them together — creates the Monaco editor, hands it to createTabs(), and
    connects the file browser, gallery, mobile nav, run provider and keybindings.
    The bottom awaits Monaco (loaded in parallel via the AMD shim in index.html). */
-import { userFS, getSystemPaths, setSystemPaths } from './fs.js';
-import { bootSimulator } from './boot.js';
-import { createFileBrowser } from './filebrowser.js';
-import { createTabs } from './tabs.js';
-import { createEditor } from './editor.js';
-import { initResizeHandlers } from './resize.js';
+import { userFS, getSystemPaths, setSystemPaths } from "./fs.js";
+import { bootSimulator } from "./boot.js";
+import { createFileBrowser } from "./filebrowser.js";
+import { createTabs } from "./tabs.js";
+import { createEditor } from "./editor.js";
+import { initResizeHandlers } from "./resize.js";
 
-const APP_BASE = new URL('.', import.meta.url).href;
+const APP_BASE = new URL(".", import.meta.url).href;
 
 async function initApp() {
   // Adopt the (already in-flight) simulator boot.
-  const { trace, startupFile, run: runCurrent, setRunProvider, notifyRunTarget, setStatus, flashStatus, addActions, setFsChangedHandler } = await bootSimulator();
-  const mobileNav = document.getElementById('mobile-nav');
+  const {
+    trace,
+    startupFile,
+    run: runCurrent,
+    setRunProvider,
+    notifyRunTarget,
+    setStatus,
+    flashStatus,
+    addActions,
+    setFsChangedHandler,
+  } = await bootSimulator();
+  const mobileNav = document.getElementById("mobile-nav");
 
   // app.js is the wiring layer: it resolves the DOM by id and injects elements into
   // the leaf modules (which never reach into the document for identity themselves).
-  const editorEl  = document.getElementById('editor');
+  const editorEl = document.getElementById("editor");
 
   // Editor instance + its language/theme/completions all live in editor.js.
   const editor = createEditor(editorEl);
@@ -31,32 +41,38 @@ async function initApp() {
      Files / Code / Output. selectMobilePanel() flips the visible panel + nav
      highlight; tabs.js calls it (focusTab → 'code', showGallery → 'gallery'), so
      opening a file or example jumps to the Code view. No-ops on desktop. */
-  const isMobile = () => matchMedia('(max-width: 767px)').matches;
+  const isMobile = () => matchMedia("(max-width: 767px)").matches;
   function selectMobilePanel(tab) {
     document.body.dataset.mobileTab = tab;
-    mobileNav.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-    if (tab === 'code' && isMobile()) requestAnimationFrame(() => editor.layout());
+    mobileNav
+      .querySelectorAll("[data-tab]")
+      .forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    if (tab === "code" && isMobile())
+      requestAnimationFrame(() => editor.layout());
   }
 
   // The tab/model system owns all tab state; we hand it the editor-area panes it
   // switches between, plus the editor instance + boot seams (status / run / mobile).
   const tabs = createTabs(
     {
-      tabBar:     document.getElementById('tab-bar'),
+      tabBar: document.getElementById("tab-bar"),
       editorPane: editorEl,
-      imgPreview: document.getElementById('img-preview'),
-      help:       document.getElementById('help'),
+      imgPreview: document.getElementById("img-preview"),
+      help: document.getElementById("help"),
     },
     { editor, setStatus, flashStatus, notifyRunTarget, selectMobilePanel },
   );
 
   function setMobileTab(tab) {
-    if (tab === 'gallery') { location.href = 'examples.html'; return; }   // gallery is its own page
-    if (tab === 'code')    return tabs.focusCodeOrNew();
-    selectMobilePanel(tab);   // files / output
+    if (tab === "gallery") {
+      location.href = "examples.html";
+      return;
+    } // gallery is its own page
+    if (tab === "code") return tabs.focusCodeOrNew();
+    selectMobilePanel(tab); // files / output
   }
-  mobileNav.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-tab]');
+  mobileNav.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-tab]");
     if (btn) setMobileTab(btn.dataset.tab);
   });
 
@@ -66,26 +82,28 @@ async function initApp() {
      internals; tabs.connect(fb) closes the loop (it needs fb.syncRows/refresh). */
   const fb = createFileBrowser(
     {
-      userList:    document.getElementById('fp-user-list'),
-      sysTree:     document.getElementById('fp-sys-tree'),
-      ctxMenu:     document.getElementById('file-ctx-menu'),
-      uploadInput: document.getElementById('fp-upload-input'),
-      userHeader:  document.querySelector('#fp-user h2'),
+      userList: document.getElementById("fp-user-list"),
+      sysTree: document.getElementById("fp-sys-tree"),
+      ctxMenu: document.getElementById("file-ctx-menu"),
+      uploadInput: document.getElementById("fp-upload-input"),
+      userHeader: document.querySelector("#fp-user h2"),
     },
     {
       userFS,
-      getSystemPaths,            // imported accessor (fs.js) → current system file list
+      getSystemPaths, // imported accessor (fs.js) → current system file list
       activePath: tabs.activePath,
-      openPaths:  tabs.openPaths,
+      openPaths: tabs.openPaths,
       transientPath: tabs.transientPath,
       isTextFile: tabs.isTextFile,
-      openFile:   tabs.openFile,
+      openFile: tabs.openFile,
       newScratch: tabs.newScratch,
-      onRenamed:  tabs.onRenamed,
-      onDeleted:  tabs.onDeleted,
+      onRenamed: tabs.onRenamed,
+      onDeleted: tabs.onDeleted,
     },
   );
   tabs.connect(fb);
+  fb.autoSetTimeZone();
+  fb.refresh();
 
   // Simulator -> editor file sync: when the running program writes/renames/deletes
   // a user file, the worker mirrors it into the shared IndexedDB store and pings us.
@@ -94,7 +112,10 @@ async function initApp() {
   let fsReloadTimer = null;
   setFsChangedHandler(() => {
     clearTimeout(fsReloadTimer);
-    fsReloadTimer = setTimeout(async () => { await userFS.reload(); fb.refresh(); }, 150);
+    fsReloadTimer = setTimeout(async () => {
+      await userFS.reload();
+      fb.refresh();
+    }, 150);
   });
 
   // Run provider + traceback markers: boot.js calls these into tabs.
@@ -104,24 +125,36 @@ async function initApp() {
 
   // Editor keybindings: F5 runs the current content (boot), Ctrl/Cmd+S saves (tabs).
   editor.addAction({
-    id:                 'badgeware.run',
-    label:              'Run in Simulator',
-    keybindings:        [monaco.KeyCode.F5],
-    contextMenuGroupId: 'navigation',
-    contextMenuOrder:   1,
-    run:                runCurrent,
+    id: "badgeware.run",
+    label: "Run in Simulator",
+    keybindings: [monaco.KeyCode.F5],
+    contextMenuGroupId: "navigation",
+    contextMenuOrder: 1,
+    run: runCurrent,
   });
-  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, tabs.saveCurrentFile);
-  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyN, tabs.newScratch);
+  editor.addCommand(
+    monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+    tabs.saveCurrentFile,
+  );
+  editor.addCommand(
+    monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyN,
+    tabs.newScratch,
+  );
 
   // Toolbar actions handled here. Examples leaves for its own page (examples.html);
   // Help toggles the overlay; Editor focuses the code view.
   addActions({
-    gallery: () => { location.href = 'examples.html'; },
-    apps:    () => { location.href = 'apps.html'; },
-    fonts:   () => { location.href = 'fonts.html'; },
-    help:    tabs.toggleHelp,
-    editor:  tabs.focusCodeOrNew,
+    gallery: () => {
+      location.href = "examples.html";
+    },
+    apps: () => {
+      location.href = "apps.html";
+    },
+    fonts: () => {
+      location.href = "fonts.html";
+    },
+    help: tabs.toggleHelp,
+    editor: tabs.focusCodeOrNew,
   });
 
   // Commit the home view FIRST: reopen the saved workspace + honour any ?file= /
@@ -133,13 +166,15 @@ async function initApp() {
 
   /* -- Load system file list (populates the System tree) ----------- */
   try {
-    const fsData = await fetch(APP_BASE + 'filesystem.json').then(r => r.json());
+    const fsData = await fetch(APP_BASE + "filesystem.json").then((r) =>
+      r.json(),
+    );
     // Manifest shape: { files: { "/path": byteSize } } — we only need the paths here.
     setSystemPaths(Object.keys(fsData.files || {}));
-    fb.refresh({ rebuildSystem: true });   // real system paths arrived → (re)build the tree
+    fb.refresh({ rebuildSystem: true }); // real system paths arrived → (re)build the tree
   } catch (_) {}
 
-  fb.refresh();              // initial file tree render
+  fb.refresh(); // initial file tree render
   initResizeHandlers();
 
   // No auto-run here: bootSimulator() already started main.py in parallel with
