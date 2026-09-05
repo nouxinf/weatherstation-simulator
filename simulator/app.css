@@ -1974,3 +1974,65 @@ details.tree-dir[open] > summary .dir-arrow {
 #side-panel {
   margin-left: auto;
 }
+
+#main-content {
+  padding: 1rem;
+  box-sizing: unset;
+}
+
+.newWindow {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAP0lEQVQYV7WLQQ4AMAjC4P+PdpkJxug4rhcDVMIQEVEBAFdBskJ7SHGOQlteJ/beiq9uiTOLJU60fxKrNVzvAFkGT/vTORhIAAAAEGRlQkdFMzBCNEFCMjgxN0Y2MjBDyOAtFgAAAABJRU5ErkJggg==");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 10px 10px;
+  image-rendering: pixelated;
+}
+
+a[target="_blank"].newWindow::before,
+a[target="_blank"].newWindow::after {
+  content: none !important;
+  display: none !important;
+}
+
+a[target="_blank"]:has(.newWindow)::before,
+a[target="_blank"]:has(.newWindow)::after {
+  content: none !important;
+  display: none !important;
+}
+
+a[target="_blank"] {
+  position: relative;
+  display: inline-block;
+  padding-right: 16px;
+}
+
+a[target="_blank"]::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--white);
+}
+
+a[target="_blank"]::after {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  content: "\1f855";
+  font-size: 13px;
+  color: var(--white);
+  line-height: 3px;
+  height: 5px;
+  width: 5px;
+
+  border: none;
+}
+
+a {
+  color: #e08920;
+}

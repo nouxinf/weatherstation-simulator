@@ -309,7 +309,30 @@
         data-drag-max="70vw"
         title="Drag to resize · click to show/hide the badge"
       ></div>
-
+      <div id="main-content">
+        <h1>Badgeware Tufty Weatherstation</h1>
+        <p>
+          Get weather data from the internet and/or from a
+          <a
+            href="https://shop.pimoroni.com/products/multi-sensor-stick"
+            target="_blank"
+            >multisensor stick</a
+          >
+          <span>with the Weatherstation app for the Badgeware Tufty!</span>
+		  <p>Try it out in the demo on the right, or <a href="install.html">install it on real hardware</a>!</p>
+		  <h3>Controls</h3>
+		  <p>Press the <kbd>↑</kbd> and <kbd>↓</kbd> buttons to switch screens, and press <kbd>A</kbd> on the badge to refetch weather. Alternatively, you can use keyboard shortcuts to interact with the badge:</p>
+		  <div class="help-doc"><ul class="help-keys">
+          <li><span class="k"><kbd>←</kbd></span><span>A</span></li>
+          <li><span class="k"><kbd>Space</kbd></span><span>B</span></li>
+          <li><span class="k"><kbd>→</kbd></span><span>C</span></li>
+          <li><span class="k"><kbd>↑</kbd> <kbd>↓</kbd></span><span>Up / Down</span></li>
+        </ul></div>
+		  
+        </p>
+		<h3>How it works</h3>
+		<p>It first reads <code>options.json</code> to find settings like what temperature unit to use, but also the coordinates of each location and an optional nickname for each. For all the coordinates without a nickname it fetches from OpenStreetMap Nominatim to get a location name, e.g. Merchant City, Glasgow. It then fetches for every location the weather from openmeteo, for things like weather code (which decides the icon), temperature, precipitation and wind direction.</p>
+      </div>
       <aside id="side-panel" aria-label="Badge and output">
         <figure id="simulator">
           <div id="badge-3d-wrap"></div>
