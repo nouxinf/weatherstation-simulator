@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Badgeware" />
+    <meta name="theme-color" content="#0a141e" />
+    <link rel="manifest" href="manifest.json" />
+    <!-- Favicon: the badgeware wordmark "B" (SVG for modern browsers, PNG fallbacks).
+       The installed-app icons (apple-touch + manifest) are still the skull mascot. -->
+    <link rel="icon" type="image/svg+xml" href="icons/favicon.svg" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="256x256"
+      href="icons/favicon-256.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="icons/favicon-32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="icons/favicon-16.png"
+    />
+    <link rel="apple-touch-icon" href="icons/icon-180.png" />
+    <title>How to install Badgeware Tufty Weatherstation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;700&display=swap"
+      crossorigin
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0..1,0&display=swap"
+      crossorigin
+    />
+
+    <link
+      href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-okaidia.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="simulator/app.css" />
+    <link rel="stylesheet" href="install.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+  </head>
+  <body>
+    <div id="main-content">
+      <h1>How to install the Badgeware Tufty Weatherstation</h1>
+      <p>What you'll need:</p>
+      <ul>
+        <li>
+          A Badgeware Tufty 2350, available at
+          <a
+            href="https://shop.pimoroni.com/products/tufty-2350"
+            target="_blank"
+            >Pimoroni</a
+          >. Other Badgeware models are highly unlikely to work and same with
+          the older RP2040 models.
+        </li>
+        <li>
+          A computer with a semi-recent version of Python installed and Git
+        </li>
+        <li>
+          A USB cable to connect to your Badgeware Tufty (e.g. USB-A to USB-C)
+        </li>
+      </ul>
+      <p>What you might want:</p>
+      <ul>
+        <li>
+          An internet connection for your Tufty - this guide will show you how
+          to connect
+        </li>
+        <li>
+          A multisensor stick available at
+          <a
+            href="https://shop.pimoroni.com/products/multi-sensor-stick"
+            target="_blank"
+            >Pimoroni</a
+          >
+          which Weatherstation supports
+        </li>
+      </ul>
+      <h2>Step 1: Setting up your Tufty</h2>
+      <p>
+        Connect your badge to your computer with a USB cable and press the
+        <code>RESET</code> button twice to enable disk mode. This'll make the
+        badge show up as a USB drive in your computer's file explorer. Open it,
+        and open <code>secrets.py</code> in a code editor. It should look
+        something like this:
+      </p>
+      <pre
+        class="language-python"
+        data-dependencies="python"
+      ><code class="language-python">WIFI_SSID = ""
+WIFI_PASSWORD = ""
+REGION = "eu"  # Options are us, cuba, eu, moldova, lebanon, egypt, chile, australia, nz
+TIMEZONE = 0 # Offset from GMT as number of hours, i.e. 0, 1, -7 etc.</code></pre>
+    </div>
+    <p>
+      Fill in the <code>WIFI_SSID</code> with your wi-fi network's name and
+      <code>WIFI_PASSWORD</code>. Fill in the region accordingly, and the
+      timezone you should put in here is probably (based off your browser
+      metadata):
+    </p>
+    <span id="timezone"></span>
+    <p>
+      Decimal timezone offsets are not supported in weatherstation, though don't
+      worry if your timezone is not by an hour offset because this plays a minor
+      role in the app.
+    </p>
+    <h2>Step 2: Downloading and configuring</h2>
+    <p>Run:</p>
+    <pre
+      class="language-bash"
+    ><code class="language-bash">git clone https://github.com/nouxinf/weatherstation.git
+cd weatherstation</code></pre>
+    <p>
+      Below you'll be able to configure options like what temperature unit to
+      use and what locations to use and whether to add a nickname. If you don't
+      add a nickname weatherstation will automatically generate one through
+      OpenStreetMap Nominatim e.g. Manhattan, NYC.
+    </p>
+    <form>
+      <label
+        >Temperature unit:
+        <select name="tempunit" id="tempunit">
+          <option value="c">Celsius</option>
+          <option value="f">Fahrenheit</option>
+          <option value="k">Kelvin</option>
+        </select>
+      </label>
+      Locations
+      <div id="map"></div>
+      <label>
+        Latitude:
+        <input type="number" id="lat" />
+      </label>
+      <label>
+        Longitude:
+        <input type="number" id="lon" />
+      </label>
+      <label>
+        Nickname (optional):
+        <input type="text" id="nick" />
+      </label>
+      <label><button id="addloc">Add</button></label>
+      Locations list:
+      <ul id="loclist"></ul>
+      <label><button id="submitopt">Submit options</button></label>
+    </form>
+    <pre class="language-json">
+		<code id="output" class="language-json">Your generated options.json will go here...</code>
+	</pre>
+    <p>
+      Open up <code>options.json</code> in a text editor and paste in the above.
+    </p>
+    <h2>Step 3: Putting it on the badge</h2>
+    <p>
+      Fortunately, weatherstation is an app and not a firmware for the Tufty.
+      This means you can keep all your other MicroPython apps without having to
+      wipe the badge. To copy it over to your badge, open up
+      <code>load.py</code> in a text editor. It should have something like this:
+    </p>
+    <pre class="language-python"><code class="language-python">import os
+import glob
+import shutil
+
+SOURCE_DIR = "."
+APP_PATH = "F:/apps/"
+INSTALL_PATH = "weatherstation/"
+...</code></pre>
+    <p>
+      Change <code>F:/apps/</code> to wherever your apps folder is in the
+      filesystem. Don't change any other part of the file unless you know what
+      you're doing.
+    </p>
+    <p>
+      Now press the <code>RESET</code> button twice on the badge while connected
+      to your PC to enable disk mode. Then run:
+    </p>
+    <pre
+      class="language-bash"
+    ><code class="language-bash">python load.py</code></pre>
+    <p>
+      Wait for it to stop transferring data then press <code>RESET</code> again
+      to boot into the menu. Use the buttons to navigate towards the bottom
+      where you'll see a cloud with sun icon. Select it with <code>B</code> and
+      you're in!
+    </p>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="install.js"></script>
+  </body>
+</html>

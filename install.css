@@ -1,0 +1,16 @@
+body {
+  display: block;
+  height: auto;
+  overflow-y: scroll;
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+form {
+  display: grid;
+}
+
+#map {
+  height: 300px;
+  width: 50%;
+}

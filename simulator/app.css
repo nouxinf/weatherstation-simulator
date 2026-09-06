@@ -2036,3 +2036,12 @@ a[target="_blank"]::after {
 a {
   color: #e08920;
 }
+
+pre {
+  padding: 0;
+}
+
+#timezone {
+  font-size: 2rem;
+  font-family: monospace;
+}
