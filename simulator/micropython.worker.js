@@ -272,9 +272,12 @@ import(new URL(`./${worker.async_backend}/micropython.mjs`, import.meta.url).hre
       return node
     }
 
-    // Fetch JSON Manifest generated with "python3 filesystem.py > filesystem.json"
+    // Fetch JSON Manifest generated with "python3 filesystem.py"
     // Shape: { "files": { "/path": byteSize, ... } }
-    await fetch(new URL('./filesystem.json', import.meta.url).href).then(async (response) => {
+    // no-cache so a manifest regenerated on disk is always picked up on reload
+    // (the FS is rebuilt from it every page load; a stale one means missing
+    // files, e.g. newly added app modules).
+    await fetch(new URL('./filesystem.json', import.meta.url).href, { cache: 'no-cache' }).then(async (response) => {
       if(response.ok) {
         // Pray we don't have a parsing error...
         const file_sizes = (await response.json())["files"]
