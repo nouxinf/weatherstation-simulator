@@ -7,9 +7,17 @@ files under simulator/filesystem change:
 
     python3 filesystem.py
 
-It writes the manifest in the same style it is committed in (2-space indent,
-CRLF, UTF-8) so regeneration diffs stay small. Nothing goes to stdout, so an old
-`> simulator/filesystem.json` redirect is harmless (the file is written first).
+The recorded size must never be SMALLER than the bytes actually served, or the
+worker's lazy loader truncates files and they fail to parse. Text files differ
+between checkouts though: git stores them as LF, Windows checkouts (autocrlf)
+get them as CRLF, Linux/Pages serve them as LF. To keep one manifest valid on
+every platform we always record the CRLF-representative size for text (the
+largest any checkout can have -- exact on Windows, a harmless over-estimate on
+LF systems since reads just stop at EOF) and the exact size for binary files.
+The result is identical no matter which OS regenerates it.
+
+Nothing goes to stdout, so an old `> simulator/filesystem.json` redirect is
+harmless (the file is written first).
 """
 
 import json
@@ -26,13 +34,25 @@ def walk_files(root):
             yield path
 
 
+def manifest_size(data):
+    # binary files (NUL bytes) are never line-ending converted, so their bytes
+    # are the same on every checkout
+    if b"\x00" in data:
+        return len(data)
+    # text: CRLF representation is LF bytes plus one \r per line ending
+    lf = data.replace(b"\r\n", b"\n")
+    return len(lf) + lf.count(b"\n")
+
+
 # Map each path to its byte size. The size lets the worker create lazy files
 # without a synchronous HEAD probe per file (see simulator/micropython.worker.js).
 files = {
-    f"/{p.relative_to(ROOT).as_posix()}": p.stat().st_size for p in walk_files(ROOT)
+    f"/{p.relative_to(ROOT).as_posix()}": manifest_size(p.read_bytes())
+    for p in walk_files(ROOT)
 }
 
+# written as LF (newline="\n" stops Windows translating \n to \r\n) so the
+# committed file doesn't flip line endings depending on who regenerated it
 text = json.dumps({"files": files}, indent=2) + "\n"
-text = text.replace("\n", "\r\n")  # match the committed line endings
-OUT.write_text(text, encoding="utf-8")
+OUT.write_text(text, encoding="utf-8", newline="\n")
 print(f"wrote {OUT} ({len(files)} files)", file=sys.stderr)
