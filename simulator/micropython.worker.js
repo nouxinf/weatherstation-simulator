@@ -266,6 +266,16 @@ import(new URL(`./${worker.async_backend}/micropython.mjs`, import.meta.url).hre
             throw new Error(`Failed to load ${url}: ${xhr.status}`)
           }
           arr.chunks[0] = new Uint8Array(xhr.response)
+          // Manifest sizes are the CRLF-representative size of each text file, so on
+          // an LF checkout the seeded length overshoots the bytes we just fetched.
+          // LazyUint8Array.get() only refuses indices past _length, so an overshoot
+          // hands the interpreter `undefined` bytes past EOF -- Python then dies with
+          // a SyntaxError on the line *after* the real end of the file (e.g. line 234
+          // of a 233-line module). Clamp to what actually arrived so reads stop at EOF.
+          if (arr.chunks[0].length < arr._length) {
+            arr._length = arr.chunks[0].length
+            arr._chunkSize = arr._length || 1
+          }
         }
         return arr.chunks[0]
       })
