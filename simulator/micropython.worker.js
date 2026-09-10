@@ -388,6 +388,32 @@ import(new URL(`./${worker.async_backend}/micropython.mjs`, import.meta.url).hre
       })
     }
 
+    // The emulated i2c bus has no devices on it, but the stub drivers shipped at
+    // the filesystem root (breakout_bme280, breakout_ltr559, lsm6ds3) stand in
+    // for the badge's multisensor strip and return live sine-wave readings. Apps
+    // detect the strip by scanning the bus, so report its addresses from scan()
+    // -- otherwise they conclude there is no hardware and never read the stubs.
+    // Re-applied per run because a soft reset drops the imported modules.
+    const SIMULATED_I2C_DEVICES = `
+try:
+    import machine
+
+    if not getattr(machine.I2C, "simulated_devices", False):
+        _real_scan = machine.I2C.scan
+
+        def scan(self):
+            found = list(_real_scan(self))
+            for address in (0x76, 0x77, 0x23, 0x6A, 0x6B):
+                if address not in found:
+                    found.append(address)
+            return found
+
+        machine.I2C.scan = scan
+        machine.I2C.simulated_devices = True
+except Exception:
+    pass
+`
+
     // Run a user program to completion in the live instance. Stored in
     // `worker.main` so a later start/stop can interrupt and await it. Both the
     // program's own blocking loop and the `_update()` fall-through loop unwind
@@ -410,6 +436,7 @@ import(new URL(`./${worker.async_backend}/micropython.mjs`, import.meta.url).hre
       try {
         await mp.runPython(`sys.path.insert(0, "/")`)
         await mp.runPython(`import badgeware`)
+        await mp.runPython(SIMULATED_I2C_DEVICES)
         await mp.runPython(program)
         // The program returned (it didn't block), so drive the frame loop.
         await mp.runPython(`
